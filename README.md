@@ -7,12 +7,12 @@ This library implement ONLY **ModbusRTU Master** and only few most important fea
  * **06** Write Single Register
  * **16** Write Multiple Registers
 
-Coil functions (readCoils, writeCoils) is not implemented yet. But you can fork and add this.
+Coil functions (readCoils, writeCoils) are not yet implemented. Please feel free to fork and add these features.
 
-Also Modbus response error doesn't checks (if your slave device return exception packet, you can't understand it), but crc is checked.
+Also Modbus response doesn't error check. (If the slave device returns an exception packet, it will not be understood as a failure.), Howeverm CRC is checked.
 
 ## Installation
-The simplest way, install via npm.
+The simplest way to install node-modbus-rtu is via npm.
 
 Add to `packages.json` 2 dependencies:
 
@@ -31,14 +31,14 @@ Then run `npm i`.
 
 
 ## Benefits
-The main goal of this library, that is native js implementation.
-There is another nodejs modbusrtu implementation but it use native libmodbus library which work only on *nix systems and have no more support (binaries don't compile for current version of node).
+The main goal of this library is native JS implementation of the MODBUS-RTU protocol.
+There is another nodejs modbusrtu implementation, however it uses native libmodbus library which work only on *nix systems. Furthermore, it is unsupported by current versions of node (binaries don't compile).
 
-Also there are few implementation of ModbusTCP protocol but it doesn't compatible with RTU protocol.
+There are a few implementations of ModbusTCP protocol, however these are not compatible with RTU protocol.
 
-This library use node-serialport which has active community, node buffers and promises.
+This library uses node-serialport which has an active community, node buffers and promises.
 
-You don't need deal with timeouts or think about sequental writing to serialport, all of this done by this library.
+You don't need deal with timeouts or think about sequental writing to serialport, this is handled by the library.
 
 ## Examples
 
@@ -63,17 +63,17 @@ new modbus.Master(serialPort, function (master) {
         //for example timeout error or crc.
       })
 
-      //Write to first slave into second register value 150.
-      //slave, register, value
+      //Write to first slave, second register, value 150.
+      //-slave-, -register-, -value-
       master.writeSingleRegister(1, 2, 150).then(success, error);
 })
 ```
 
-### Polling data from slaves in loop.
+### Poll data from slaves in loop.
 
-When polling in loop you have to wait response of all yours request, otherwise pause between loop will be not work.
+When polling in loop, it is necessary to wait until all responses are collected, otherwise pause between loop will be not work. (The number of returned bytes may vary).
 
-We collect all promises in array, then use Q.all() and create new promise which will be fullfiled when all requests finished.
+All promises are collected into an array:  Q.all().  Then, a new promise is created which will be fulfilled when all requests are finished.
 
 ```js
 var SerialPort = require('serialport').SerialPort;
@@ -118,11 +118,12 @@ This approach is very similar to arduino or PLC programming workflow, but it ext
 Imagine that you need do something after response is received. In this approach you need to do it in a promise callback of particular request.
 If you need to wait more than one request or do a cascade (wait one, then second, one by one) Your code became into callback doom very quickly.
 
-So i suggest another approach: apply OOP and IoC pattern to code and write some classes for our slaves:
+So I suggest another approach: apply OOP and IoC pattern to code and write some classes for our slaves:
 
 ### Use in real project: creating objects for slaves
-For example we have a modbus thermostat, and we want to do something when data from thermostat is changed.
-Create class for this thermostat (i suggest extract it to another file):
+For example we have a modbus thermostat, and we want to do something when data from thermostat is changed. 
+
+Create class for this thermostat (suggest extracting this to a new file...):
 
 ```js
 var _ = require('lodash'); //npm i lodash
@@ -196,7 +197,7 @@ _.extend(Thermostat.prototype, {
 
 ```
 
-This simple class blackboxing all modbus communication inside and provide to us simple and clean api.
+This class blackboxes all modbus communication and provides a simple, clean api.
 
 ```js
 new modbus.Master(serialPort, function (modbus) {
@@ -210,50 +211,50 @@ new modbus.Master(serialPort, function (modbus) {
 
 Now our thermostat will trigger callback only if data is changed.
 
-You can write similar classes for all slave devices, add events which make sense for you and write useful code more comfortable.
+One can write similar classes for all slave devices, add events which make sense for particular situations and write useful code more comfortably.
 
 
 ### How it works inside
 
-Communicating via serial port is sequential. It means you can't write few requests and then read few responses.
+Communicating via serial port is sequential. It is not possible to write a few requests, then read a few responses.
 
-You have to write something then wait the answer and then writing another request.
+It is necessary to write something to serial, then wait for the answer, then write the next request, etc.
 
-Also you need determine the end of packet via timeout (different for various baudrate).
+End of packet must be determined by timeout, which varies depending on baudrate.
 
-
-The problem is, if we call functions in script in synchronus style (one by one without callbacks),
-they will write to port immediately without waiting of response of previous request, as result we receive trash
-
-
-For dealing with this problem is a simple queue inside library.
-When you call any of modbus function they didn't write to port immediately instead of that the adds to queue and return a promise.
-When the queue start to process entire request it add a timeout to promise.
-If result will not received in `constants.RESPONSE_TIMEOUT` promise will be rejected with timeout error.
-
-SerialPort receive data randomly. It means it can receive 2 bytes per tick or 4 or more.
-Modbus packet can contain a various count of bytes.
-
-So our task is collect all bytes and correctly determine end of packet.
-
-This library use debounce function for collecting buffer.
-
-Each time serialPort receive data it trigger a function which store response buffer in array and call debounced function.
+The problem is, if scripted functions are called in synchronus style (one by one without callbacks),
+they will write to port immediately. This causes a failure, because the slave tries to respond immediately without waiting for response of previous request, so as a result we receive trash...
 
 
+To deal with this problem, the library provides simple queuing. 
+
+
+When a modbus function is called, it does not write to the port immediately, but instead the function is added to a queue.
+This returns a promise.  
+The quese processes the request, and adds a timeout to the promise.
+If the result of the queue is not recieved in `constants.RESPONSE_TIMEOUT;` the promise will be rejected with a timeout error.
+
+SerialPort will accept data of variable length.  It may recieve 2 bytes per tick, or more than 4.  Modbus packets are or variable length.
+
+The task is then to collect all of the responded bytes and correctly determine the end of the packet.
+
+This library uses the debounce function for collecting buffer.
+
+Each time serialPort recieves data, it triggers a function which stores response buffer in an array and calls the debounce function.
+
+The debounce function ignores calls which happen too often while buffers are being stored.  (PLEASE VERIFY STATEMENT ACCURACY.)
 Debounced function ignores calls which happen to often and while it we store buffers.
 
-When pause between calls reach setted timeout, function inside debounce will called and all stored buffers will be concatenated.
+When pause between calls reaches a timeout state, the function inside debounce is called and all stored buffers will be concatenated.
 
-It means packet is end and we can fulfill the promise.
+This indicates end-of-packet, and the promise is fulfilled.
 
-Both of timeouts can be tuned for you project.
+Each of the timeouts (for debounce, and promise) can be tuned for a particular project.
 
-If you set **too small timeout** in debounce function it will be incorrect collect buffers and you will often response CRC error.
+If the debounce timeout is too small, it will incorrectly collect buffers and you'll see CRC response errors.
+If the debounce timeout is too large, a lot of time will be wasted in the communication cycle.
 
-If you set **too big timeout** in debounce function you will waist a lot of time on that.
-
-Its important when you have many slave device. Request loop in your script may be more than 1 minute!
+If there are many connected slaves, this timout becomes very important because it may take more than a minute to complete a single poll request for all devices on a segment!
 
 #### How to set timeouts
 All constants stored in `modbus-rtu/constants.js`. You can require this file and override default values:
@@ -325,7 +326,7 @@ new modbus.Master(serialPort, function (master) {
 #### master.writeMultipleRegisters(slave, start, array) -> promise
 Modbus function write multiple registers.
 
-You can set starting register and data array. Register from `start` to `array.length` will be filled with array data
+Set the starting register and data array. Register from `start` to `array.length` will be filled with array data
 
 * **slave** - slave address (1..247)
 * **start** - starting register number for write
